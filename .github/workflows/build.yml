@@ -31,12 +31,12 @@ jobs:
             zip
             make
 
-      - name: Build & Package (Safe Mode)
+      - name: Build & Package
         shell: msys2 {0}
         run: |
           mkdir -p build && cd build
 
-          # Build with basic static linking
+          # Build
           cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++ -Wl,-Bstatic -lwinpthread -lz -Wl,-Bdynamic" \
             -DZLIB_LIBRARY=/ucrt64/lib/libz.a \
@@ -44,46 +44,41 @@ jobs:
 
           make -j$(nproc)
 
-          # Copy the executable
+          # Copy executable
           EXE_PATH=$(find . -name "DomesdayDuplicator.exe" | head -n1)
-          if [ -z "$EXE_PATH" ]; then
-            echo "Error: DomesdayDuplicator.exe not found!"
-            exit 1
-          fi
           cp "$EXE_PATH" DomesdayDuplicator.exe
 
-          # Deploy Qt files
+          # Deploy Qt
           windeployqt6 --release --no-translations --no-opengl-sw --no-system-d3d-compiler DomesdayDuplicator.exe
 
-          # === MOST IMPORTANT PART: Copy ALL required DLLs ===
-          echo "=== Copying all dependencies using ldd ==="
-          ldd DomesdayDuplicator.exe | grep -E '/ucrt64/' | awk '{print $3}' | xargs -I {} cp -n "{}" . || true
+          # Copy all required DLLs
+          ldd DomesdayDuplicator.exe | grep -E '/ucrt64/' | awk '{print $3}' | xargs -I {} cp -n "{}" . 2>/dev/null || true
 
-          # Extra copies for safety (FFmpeg audio + USB)
+          # Extra safety copies
           cp -n /ucrt64/bin/avutil-*.dll      . 2>/dev/null || true
           cp -n /ucrt64/bin/swresample-*.dll  . 2>/dev/null || true
           cp -n /ucrt64/bin/swscale-*.dll     . 2>/dev/null || true
 
-          # Qt platform plugins
+          # Qt plugins - only these two folders
           mkdir -p platforms styles
           cp -n /ucrt64/share/qt6/plugins/platforms/qwindows.dll platforms/ 2>/dev/null || true
           cp -n /ucrt64/share/qt6/plugins/styles/qwindowsvistastyle.dll styles/ 2>/dev/null || true
 
-          # Clean up only build files, keep all runtime DLLs
-          rm -f dddconv.exe dddutil.exe CMakeCache.txt Makefile cmake_install.cmake 2>/dev/null || true
+          # Final aggressive cleanup - keep ONLY exe, dlls, platforms and styles
+          find . -maxdepth 1 -type f ! -name "DomesdayDuplicator.exe" ! -name "*.dll" -delete
+          find . -maxdepth 1 -type d ! -name "." ! -name "platforms" ! -name "styles" -exec rm -rf {} +
 
-          echo "=== Final folder contents ==="
+          echo "=== FINAL CONTENTS ==="
           ls -la
-
           echo "Executable size:"
           ls -lh DomesdayDuplicator.exe
 
-          # Create zip
-          zip -9 -r ../DomesdayDuplicator-Windows.zip ./*
+          # Create zip (single zip, clean name)
+          zip -9 -r DomesdayDuplicator-Windows.zip ./*
 
       - name: Upload ZIP
         uses: actions/upload-artifact@v4
         with:
           name: DomesdayDuplicator-Windows-ZIP
-          path: DomesdayDuplicator-Windows.zip
+          path: build/DomesdayDuplicator-Windows.zip
           retention-days: 7
