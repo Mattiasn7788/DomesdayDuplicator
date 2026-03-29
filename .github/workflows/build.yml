@@ -1,4 +1,4 @@
-name: Cross-Platform Build
+name: Compact Windows Build
 on: [push, pull_request]
 
 env:
@@ -28,46 +28,37 @@ jobs:
         shell: msys2 {0}
         run: |
           mkdir -p build && cd build
-          ar rcs /ucrt64/lib/libdl.a
-          cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+          cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
+          # 1. Move EXE to root
           EXE_PATH=$(find . -name "DomesdayDuplicator.exe")
           cp "$EXE_PATH" .
 
-          windeployqt --release --no-translations --no-opengl-sw DomesdayDuplicator.exe
+          # 2. Aggressive windeployqt (prevents hundreds of extra files)
+          windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler DomesdayDuplicator.exe
 
-          # FFmpeg & Hardware Cores
+          # 3. Add ONLY the "Must-Have" Hardware/Processing DLLs
+          cp /ucrt64/bin/libusb-1.0.dll .
+          cp /ucrt64/bin/libgomp-1.dll .
+          cp /ucrt64/bin/zlib1.dll .
           cp /ucrt64/bin/swresample-*.dll .
           cp /ucrt64/bin/avcodec-*.dll .
-          cp /ucrt64/bin/avformat-*.dll .
           cp /ucrt64/bin/avutil-*.dll .
           cp /ucrt64/bin/swscale-*.dll .
-          cp /ucrt64/bin/libvpl*.dll .
+          cp /ucrt64/bin/libgcc_s_seh-1.dll .
+          cp /ucrt64/bin/libstdc++-6.dll .
+          cp /ucrt64/bin/libwinpthread-1.dll .
 
-          # Full dependency list (Static names)
-          DEPS=(
-            "libgcc_s_seh-1.dll" "libstdc++-6.dll" "libwinpthread-1.dll"
-            "libusb-1.0.dll" "libiconv-2.dll" "libintl-8.dll" "zlib1.dll"
-            "libpng16-16.dll" "libharfbuzz-0.dll" "libfreetype-6.dll"
-            "libglib-2.0-0.dll" "libgraphite2.dll" "libbz2-1.dll"
-            "libdouble-conversion.dll" "libmd4c.dll" "libb2-1.dll"
-            "libpcre2-16-0.dll" "libpcre2-8-0.dll" "libsoxr.dll" 
-            "libva.dll" "libva_win32.dll" "libgomp-1.dll"
-          )
-
-          for dll in "${DEPS[@]}"; do
-            cp /ucrt64/bin/$dll .
-          done
-
-          # ICU wildcards
-          cp /ucrt64/bin/libicudt*.dll .
-          cp /ucrt64/bin/libicuin*.dll .
-          cp /ucrt64/bin/libicuuc*.dll .
-
+          # 4. FINAL CLEANUP: Only keep 'platforms' and 'styles' folders
+          # This deletes the translations, imageformats, tls, and network folders.
+          find . -maxdepth 1 -type d ! -name 'platforms' ! -name 'styles' ! -name '.' -exec rm -rf {} +
+          
+          # Remove tool EXEs that aren't the main app
           rm -f dddconv.exe dddutil.exe
+
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
         with:
-          name: DomesdayDuplicator-Windows
+          name: DomesdayDuplicator-Compact-Windows
           path: build/
