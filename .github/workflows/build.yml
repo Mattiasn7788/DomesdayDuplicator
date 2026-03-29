@@ -20,6 +20,7 @@ jobs:
             mingw-w64-ucrt-x86_64-qt6-base
             mingw-w64-ucrt-x86_64-qt6-serialport
             mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-libvpl
             mingw-w64-ucrt-x86_64-libusb
             mingw-w64-ucrt-x86_64-flac
             make
@@ -27,27 +28,23 @@ jobs:
         shell: msys2 {0}
         run: |
           mkdir -p build && cd build
-          # Dummy library to satisfy linker
           ar rcs /ucrt64/lib/libdl.a 
           cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
           make -j$(nproc)
 
-          # 1. Locate and move the executable
           EXE_PATH=$(find . -name "DomesdayDuplicator.exe")
           cp "$EXE_PATH" .
 
-          # 2. Run windeployqt for core Qt files
           windeployqt --release --no-translations --no-opengl-sw DomesdayDuplicator.exe
 
-          # 3. MANUALLY copy specific dependencies
-          # We use direct 'cp' for FFmpeg to ensure wildcards expand correctly
+          # FFmpeg Cores with wildcards
           cp /ucrt64/bin/swresample-*.dll .
           cp /ucrt64/bin/avcodec-*.dll .
           cp /ucrt64/bin/avformat-*.dll .
           cp /ucrt64/bin/avutil-*.dll .
           cp /ucrt64/bin/swscale-*.dll .
 
-          # Copy the static-named list
+          # Full dependency list
           DEPS=(
             "libgcc_s_seh-1.dll" "libstdc++-6.dll" "libwinpthread-1.dll"
             "libusb-1.0.dll" "libiconv-2.dll" "libintl-8.dll" "libzstd.dll"
@@ -56,13 +53,13 @@ jobs:
             "libdouble-conversion.dll" "libmd4c.dll" "libb2-1.dll"
             "libpcre2-16-0.dll" "libpcre2-8-0.dll" "libbrotlicommon.dll"
             "libbrotlidec.dll" "libicudt*.dll" "libicuin*.dll" "libicuuc*.dll"
+            "libsoxr.dll" "libva.dll" "libva_win32.dll" "libvpl*.dll"
           )
 
           for dll in "${DEPS[@]}"; do
             cp /ucrt64/bin/$dll .
           done
 
-          # 4. Clean up any accidental extras
           rm -f dddconv.exe dddutil.exe
       - name: Upload Windows Build
         uses: actions/upload-artifact@v4
