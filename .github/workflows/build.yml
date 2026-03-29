@@ -1,0 +1,35 @@
+name: Cross-Platform Build
+on: [push, pull_request]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          # Caching is enabled by default in msys2/setup-msys2@v2
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-libusb mingw-w64-ucrt-x86_64-flac make
+
+      - name: Build & Package
+        shell: msys2 {0}
+        run: |
+          mkdir -p build && cd build
+          ar rcs /ucrt64/lib/libdl.a # The Windows dummy-lib fix
+          cmake .. -G "MSYS Makefiles" -DBUILD_SHARED_LIBS=OFF
+          make
+          # Automate the "Official Look" by deploying only core Qt files
+          windeployqt --no-translations --no-opengl-sw DomesdayDuplicator/DomesdayDuplicator.exe
+
+      - name: Upload Windows Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: DomesdayDuplicator-Windows
+          path: build/DomesdayDuplicator/
