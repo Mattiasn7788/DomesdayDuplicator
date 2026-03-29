@@ -27,35 +27,41 @@ jobs:
         shell: msys2 {0}
         run: |
           mkdir -p build && cd build
-          ar rcs /ucrt64/lib/libdl.a
+          # Dummy library to satisfy linker
+          ar rcs /ucrt64/lib/libdl.a 
           cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
           make -j$(nproc)
-          
+
           # 1. Locate and move the executable
           EXE_PATH=$(find . -name "DomesdayDuplicator.exe")
           cp "$EXE_PATH" .
-          
-          # 2. Run windeployqt to get the core Qt files (Core, Gui, Widgets, etc.)
+
+          # 2. Run windeployqt for core Qt files
           windeployqt --release --no-translations --no-opengl-sw DomesdayDuplicator.exe
-          
-          # 3. MANUALLY copy the specific non-Qt dependencies from your list
-          # This ensures we get exactly what works on your desktop
+
+          # 3. MANUALLY copy specific dependencies
+          # We use direct 'cp' for FFmpeg to ensure wildcards expand correctly
+          cp /ucrt64/bin/swresample-*.dll .
+          cp /ucrt64/bin/avcodec-*.dll .
+          cp /ucrt64/bin/avformat-*.dll .
+          cp /ucrt64/bin/avutil-*.dll .
+          cp /ucrt64/bin/swscale-*.dll .
+
+          # Copy the static-named list
           DEPS=(
-            "libgcc_s_seh-1.dll" "libstdc++-6.dll" "libwinpthread-1.dll" 
-            "libusb-1.0.dll" "libiconv-2.dll" "libintl-8.dll" "libzstd.dll" 
-            "libpng16-16.dll" "libharfbuzz-0.dll" "libfreetype-6.dll" 
-            "libglib-2.0-0.dll" "libgraphite2.dll" "libbz2-1.dll" 
-            "libdouble-conversion.dll" "libmd4c.dll" "libb2-1.dll" 
-            "libpcre2-16-0.dll" "libpcre2-8-0.dll" "libbrotlicommon.dll" 
-            "libbrotlidec.dll" "libicudt78.dll" "libicuin78.dll" "libicuuc78.dll"
-            "swresample-*.dll"
-            "avcodec-*.dll"
+            "libgcc_s_seh-1.dll" "libstdc++-6.dll" "libwinpthread-1.dll"
+            "libusb-1.0.dll" "libiconv-2.dll" "libintl-8.dll" "libzstd.dll"
+            "libpng16-16.dll" "libharfbuzz-0.dll" "libfreetype-6.dll"
+            "libglib-2.0-0.dll" "libgraphite2.dll" "libbz2-1.dll"
+            "libdouble-conversion.dll" "libmd4c.dll" "libb2-1.dll"
+            "libpcre2-16-0.dll" "libpcre2-8-0.dll" "libbrotlicommon.dll"
+            "libbrotlidec.dll" "libicudt*.dll" "libicuin*.dll" "libicuuc*.dll"
           )
-          
+
           for dll in "${DEPS[@]}"; do
-            cp "/ucrt64/bin/$dll" .
+            cp /ucrt64/bin/$dll .
           done
-          
+
           # 4. Clean up any accidental extras
           rm -f dddconv.exe dddutil.exe
       - name: Upload Windows Build
