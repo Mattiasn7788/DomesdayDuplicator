@@ -12,7 +12,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     permissions:
-      contents: write        # This is required to create releases
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -76,8 +76,14 @@ jobs:
           find . -maxdepth 1 -type f ! -name "*.exe" ! -name "*.dll" -delete
           find . -maxdepth 1 -type d ! -name "." ! -name "platforms" ! -name "styles" -exec rm -rf {} +
 
+          echo "=== FINAL CONTENTS ==="
+          ls -la
+
+          # === Clean zip - files directly in root (no build/ folder) ===
           cd ..
-          zip -9 -r DomesdayDuplicator_Flac+DownSampling.zip build/*
+          cd build
+          zip -9 -r ../../DomesdayDuplicator_Flac+DownSampling.zip ./*
+          cd ../..
           ls -lh DomesdayDuplicator_Flac+DownSampling.zip
 
       - name: Create Release
