@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  pull_request:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -12,6 +11,8 @@ env:
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write        # This is required to create releases
 
     steps:
       - uses: actions/checkout@v4
@@ -75,10 +76,6 @@ jobs:
           find . -maxdepth 1 -type f ! -name "*.exe" ! -name "*.dll" -delete
           find . -maxdepth 1 -type d ! -name "." ! -name "platforms" ! -name "styles" -exec rm -rf {} +
 
-          echo "=== FINAL CONTENTS ==="
-          ls -la
-
-          # Create zip in root
           cd ..
           zip -9 -r DomesdayDuplicator_Flac+DownSampling.zip build/*
           ls -lh DomesdayDuplicator_Flac+DownSampling.zip
