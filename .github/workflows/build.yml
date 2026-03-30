@@ -23,9 +23,9 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
             mingw-w64-ucrt-x86_64-qt6-serialport
             mingw-w64-ucrt-x86_64-ffmpeg
-            mingw-w64-ucrt-x86_64-libvpl
             mingw-w64-ucrt-x86_64-libusb
             mingw-w64-ucrt-x86_64-flac
             zip
@@ -46,7 +46,7 @@ jobs:
 
           make -j$(nproc)
 
-          # Copy all three executables
+          # Copy the three executables
           cp "$(find . -name "DomesdayDuplicator.exe" | head -n1)" DomesdayDuplicator.exe || true
           cp "$(find . -name "dddconv.exe" | head -n1)" dddconv.exe || true
           cp "$(find . -name "dddutil.exe" | head -n1)" dddutil.exe || true
@@ -54,39 +54,30 @@ jobs:
           # Deploy Qt
           windeployqt6 --release --no-translations --no-opengl-sw --no-system-d3d-compiler DomesdayDuplicator.exe
 
-          # Collect DLLs
+          # Collect all required DLLs
           ldd DomesdayDuplicator.exe | grep -E '/ucrt64/' | awk '{print $3}' | xargs -I {} cp -n "{}" . 2>/dev/null || true
 
-          # Critical DLLs
+          # Force include the ones that were missing before
           cp -n /ucrt64/bin/libgcc_s_seh-1.dll      . 2>/dev/null || true
           cp -n /ucrt64/bin/libzstd.dll             . 2>/dev/null || true
           cp -n /ucrt64/bin/libbrotlidec.dll        . 2>/dev/null || true
           cp -n /ucrt64/bin/libbrotlicommon.dll     . 2>/dev/null || true
-
-          # FFmpeg and other libs
-          cp -n /ucrt64/bin/avcodec-*.dll     . 2>/dev/null || true
-          cp -n /ucrt64/bin/avutil-*.dll      . 2>/dev/null || true
-          cp -n /ucrt64/bin/swresample-*.dll  . 2>/dev/null || true
-          cp -n /ucrt64/bin/swscale-*.dll     . 2>/dev/null || true
-          cp -n /ucrt64/bin/avformat-*.dll    . 2>/dev/null || true
-          cp -n /ucrt64/bin/libicu*.dll       . 2>/dev/null || true
-          cp -n /ucrt64/bin/libvpl*.dll       . 2>/dev/null || true
 
           # Qt plugins
           mkdir -p platforms styles
           cp -n /ucrt64/share/qt6/plugins/platforms/qwindows.dll platforms/ 2>/dev/null || true
           cp -n /ucrt64/share/qt6/plugins/styles/qwindowsvistastyle.dll styles/ 2>/dev/null || true
 
-          # Cleanup
+          # Cleanup - keep only .exe + .dll + platforms + styles
           find . -maxdepth 1 -type f ! -name "*.exe" ! -name "*.dll" -delete
           find . -maxdepth 1 -type d ! -name "." ! -name "platforms" ! -name "styles" -exec rm -rf {} +
 
           echo "=== FINAL CONTENTS ==="
           ls -la
-          echo "Executable size:"
-          ls -lh DomesdayDuplicator.exe
+          echo "Total size of package:"
+          du -sh .
 
-          # Create clean zip - files directly in the root of the zip
+          # Create clean zip
           cd ..
           cd build
           zip -9 -r ../../DomesdayDuplicator-Windows.zip ./*
@@ -97,5 +88,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: DomesdayDuplicator-Compact-Windows
-          path: build/
+          path: DomesdayDuplicator-Windows.zip
           retention-days: 0
