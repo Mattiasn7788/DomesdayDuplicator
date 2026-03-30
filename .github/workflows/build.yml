@@ -78,11 +78,9 @@ jobs:
           echo "=== FINAL CONTENTS ==="
           ls -la
 
-          # Create zip with simple name
+          # Create zip in repository root with simple name
           cd ..
-          cd build
-          zip -9 -r ../../DomesdayDuplicator_Flac+DownSampling.zip ./*
-          cd ../..
+          zip -9 -r DomesdayDuplicator_Flac+DownSampling.zip build/*
           ls -lh DomesdayDuplicator_Flac+DownSampling.zip
 
       - name: Create Release
