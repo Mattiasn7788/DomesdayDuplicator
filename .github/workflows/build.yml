@@ -98,5 +98,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: DomesdayDuplicator-Compact-Windows
-          path: DomesdayDuplicator-Windows.zip
+          path: build/
           retention-days: 0
