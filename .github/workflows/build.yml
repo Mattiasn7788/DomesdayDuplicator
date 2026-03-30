@@ -47,10 +47,15 @@ jobs:
 
           make -j$(nproc)
 
+          # Copy all three executables
           cp "$(find . -name "DomesdayDuplicator.exe" | head -n1)" DomesdayDuplicator.exe || true
+          cp "$(find . -name "dddconv.exe" | head -n1)" dddconv.exe || true
+          cp "$(find . -name "dddutil.exe" | head -n1)" dddutil.exe || true
 
+          # Deploy Qt
           windeployqt6 --release --no-translations --no-opengl-sw --no-system-d3d-compiler DomesdayDuplicator.exe
 
+          # Collect DLLs
           ldd DomesdayDuplicator.exe | grep -E '/ucrt64/' | awk '{print $3}' | xargs -I {} cp -n "{}" . 2>/dev/null || true
 
           # The 4 critical DLLs
@@ -73,16 +78,23 @@ jobs:
           cp -n /ucrt64/share/qt6/plugins/platforms/qwindows.dll platforms/ 2>/dev/null || true
           cp -n /ucrt64/share/qt6/plugins/styles/qwindowsvistastyle.dll styles/ 2>/dev/null || true
 
-          # Cleanup
+          # Cleanup - keep only .exe, .dll, platforms and styles
           find . -maxdepth 1 -type f ! -name "*.exe" ! -name "*.dll" -delete
           find . -maxdepth 1 -type d ! -name "." ! -name "platforms" ! -name "styles" -exec rm -rf {} +
 
-          rm -f dddconv.exe dddutil.exe 2>/dev/null || true
-
           echo "=== FINAL CONTENTS ==="
           ls -la
+          echo "Executable size:"
+          ls -lh DomesdayDuplicator.exe
 
-          # === FIXED: Create clean zip directly ===
+          # Create clean zip (no nested build folder)
           cd ..
-          zip -9 -r DomesdayDuplicator-Windows.zip build/* --exclude "build/build/*"
+          zip -9 -r DomesdayDuplicator-Windows.zip build/*
           ls -lh DomesdayDuplicator-Windows.zip
+
+      - name: Upload Windows Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: DomesdayDuplicator-Compact-Windows
+          path: DomesdayDuplicator-Windows.zip
+          retention-days: 0
