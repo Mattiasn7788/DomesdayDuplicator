@@ -79,18 +79,11 @@ jobs:
           echo "=== FINAL CONTENTS ==="
           ls -la
 
-          # === Clean zip - files directly in root (no build/ folder) ===
-          cd ..
-          cd build
-          zip -9 -r ../../DomesdayDuplicator_Flac+DownSampling.zip ./*
-          cd ../..
-          ls -lh DomesdayDuplicator_Flac+DownSampling.zip
-
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: DomesdayDuplicator_Flac+DownSampling.zip
+          files: build/
           name: DomesdayDuplicator_Flac+DownSampling ${{ github.ref_name }}
           draft: false
           prerelease: false
