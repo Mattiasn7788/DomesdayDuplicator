@@ -72,21 +72,19 @@ jobs:
           cp -n /ucrt64/share/qt6/plugins/platforms/qwindows.dll platforms/ 2>/dev/null || true
           cp -n /ucrt64/share/qt6/plugins/styles/qwindowsvistastyle.dll styles/ 2>/dev/null || true
 
-          # Remove unwanted files
+          # Remove unwanted file
           rm -f zlib1.dll 2>/dev/null || true
 
-          # Final cleanup
+          # Cleanup
           find . -maxdepth 1 -type f ! -name "*.exe" ! -name "*.dll" -delete
           find . -maxdepth 1 -type d ! -name "." ! -name "platforms" ! -name "styles" -exec rm -rf {} +
 
           echo "=== FINAL CONTENTS ==="
           ls -la
 
-          # Create clean zip - files directly at root (no build/ folder)
+          # === Reliable zip creation - no double zip, no nested build folder ===
           cd ..
-          cd build
-          zip -9 -r ../../DomesdayDuplicator-Windows.zip ./*
-          cd ../..
+          zip -9 -r DomesdayDuplicator-Windows.zip build/* -x "build/build/*"
           ls -lh DomesdayDuplicator-Windows.zip
 
       - name: Upload Windows Build
