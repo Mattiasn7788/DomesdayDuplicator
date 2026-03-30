@@ -23,6 +23,7 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-tools
             mingw-w64-ucrt-x86_64-qt6-serialport
             mingw-w64-ucrt-x86_64-ffmpeg
             mingw-w64-ucrt-x86_64-libvpl
@@ -36,8 +37,7 @@ jobs:
         run: |
           mkdir -p build && cd build
 
-          cmake .. -G "MSYS Makefiles" \
-            -DCMAKE_BUILD_TYPE=Release \
+          cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++ \
               -Wl,-Bstatic -lwinpthread -lusb-1.0 -lz -lbcrypt -lws2_32 -liphlpapi \
               -ladvapi32 -luser32 -lgdi32 -lshell32 -lwinmm -lole32 -lsetupapi \
@@ -50,26 +50,23 @@ jobs:
           # Copy executable
           cp "$(find . -name "DomesdayDuplicator.exe" | head -n1)" DomesdayDuplicator.exe || true
 
-          # Deploy Qt
+          # Deploy Qt - FIXED: removed unsupported options
           windeployqt6 --release \
                        --no-translations \
                        --no-opengl-sw \
                        --no-system-d3d-compiler \
-                       --no-angle \
-                       --no-virtualkeyboard \
-                       --no-quick \
                        DomesdayDuplicator.exe
 
           # Collect DLLs via ldd
           ldd DomesdayDuplicator.exe | grep -E '/ucrt64/' | awk '{print $3}' | xargs -I {} cp -n "{}" . 2>/dev/null || true
 
-          # The 4 DLLs you need on the other computer
+          # The 4 critical DLLs
           cp -n /ucrt64/bin/libgcc_s_seh-1.dll      . 2>/dev/null || true
           cp -n /ucrt64/bin/libzstd.dll             . 2>/dev/null || true
           cp -n /ucrt64/bin/libbrotlidec.dll        . 2>/dev/null || true
           cp -n /ucrt64/bin/libbrotlicommon.dll     . 2>/dev/null || true
 
-          # FFmpeg and other libs
+          # FFmpeg and common libs
           cp -n /ucrt64/bin/avcodec-*.dll     . 2>/dev/null || true
           cp -n /ucrt64/bin/avutil-*.dll      . 2>/dev/null || true
           cp -n /ucrt64/bin/swresample-*.dll  . 2>/dev/null || true
@@ -78,12 +75,12 @@ jobs:
           cp -n /ucrt64/bin/libicu*.dll       . 2>/dev/null || true
           cp -n /ucrt64/bin/libvpl*.dll       . 2>/dev/null || true
 
-          # Qt plugins
+          # Qt plugins (only what's needed)
           mkdir -p platforms styles
           cp -n /ucrt64/share/qt6/plugins/platforms/qwindows.dll platforms/ 2>/dev/null || true
           cp -n /ucrt64/share/qt6/plugins/styles/qwindowsvistastyle.dll styles/ 2>/dev/null || true
 
-          # Final cleanup
+          # Cleanup
           find . -maxdepth 1 -type f ! -name "*.exe" ! -name "*.dll" -delete
           find . -maxdepth 1 -type d ! -name "." ! -name "platforms" ! -name "styles" -exec rm -rf {} +
 
