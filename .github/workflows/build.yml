@@ -1,6 +1,10 @@
-name: Compact Windows Build
+name: Compact Windows Build + Release
 
-on: [push, pull_request]
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -82,9 +86,28 @@ jobs:
           echo "=== FINAL CONTENTS ==="
           ls -la
 
-      - name: Upload Windows Build
+          # Create clean zip
+          cd ..
+          cd build
+          zip -9 -r ../../DomesdayDuplicator_Flac+DownSampling.zip ./*
+          cd ../..
+          ls -lh DomesdayDuplicator_Flac+DownSampling.zip
+
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: DomesdayDuplicator-Compact-Windows
-          path: build/
+          path: DomesdayDuplicator_Flac+DownSampling.zip
           retention-days: 0
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: DomesdayDuplicator_Flac+DownSampling.zip
+          name: DomesdayDuplicator_Flac+DownSampling ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
