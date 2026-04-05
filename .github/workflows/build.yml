@@ -160,16 +160,16 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          brew install cmake libusb flac brotli webp
+          brew install cmake libusb flac brotli webp soxr
           # Note: ffmpeg is NOT installed from Homebrew — Homebrew's ffmpeg targets macOS 14.
-          # We build libavutil + libswresample from source with deployment target 11.0 below.
+          # We build it from source with deployment target 11.0 below.
 
       - name: Cache ffmpeg (macOS 11 compatible)
         uses: actions/cache@v4
         id: ffmpeg-cache
         with:
           path: ~/ffmpeg-compat
-          key: ffmpeg-7.1-macos11-x86_64-v1
+          key: ffmpeg-7.1-macos11-x86_64-v3
 
       - name: Build ffmpeg 7.1 with macOS 11 deployment target
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
@@ -177,16 +177,27 @@ jobs:
           git clone --depth 1 --branch n7.1 https://github.com/FFmpeg/FFmpeg.git /tmp/ffmpeg-src
           cd /tmp/ffmpeg-src
           export MACOSX_DEPLOYMENT_TARGET=11.0
+          # Build shared libs (libavutil + libswresample) for our C++ app to link against,
+          # plus avcodec/avformat/avfilter and the ffmpeg binary for on-the-fly FLAC capture.
+          # --enable-libsoxr gives high-quality resampling via resampler=soxr in the pipeline.
           ./configure \
             --prefix=$HOME/ffmpeg-compat \
             --enable-shared --disable-static \
-            --disable-programs --disable-doc --disable-network \
-            --disable-avcodec --disable-avformat --disable-avfilter \
+            --disable-doc --disable-network \
             --disable-swscale --disable-postproc \
-            --enable-swresample --enable-avutil \
-            --disable-x86asm \
-            --extra-cflags="-mmacosx-version-min=11.0" \
-            --extra-ldflags="-mmacosx-version-min=11.0"
+            --enable-avutil --enable-swresample \
+            --enable-avcodec --enable-avformat --enable-avfilter \
+            --enable-ffmpeg --disable-ffplay --disable-ffprobe \
+            --enable-protocol=pipe \
+            --disable-decoders --enable-decoder=pcm_s16le \
+            --disable-encoders --enable-encoder=pcm_u8 \
+            --disable-demuxers --enable-demuxer=pcm_s16le \
+            --disable-muxers   --enable-muxer=pcm_u8 \
+            --disable-filters  --enable-filter=aresample \
+            --enable-libsoxr \
+            --extra-cflags="-mmacosx-version-min=11.0 -I$(brew --prefix soxr)/include" \
+            --extra-ldflags="-mmacosx-version-min=11.0 -L$(brew --prefix soxr)/lib" \
+            --disable-x86asm
           make -j$(sysctl -n hw.logicalcpu)
           make install
 
@@ -208,15 +219,60 @@ jobs:
           $QT_ROOT/bin/macdeployqt DomesdayDuplicator/DomesdayDuplicator.app || true
 
           APP_FW="DomesdayDuplicator/DomesdayDuplicator.app/Contents/Frameworks"
+          APP_MACOS="DomesdayDuplicator/DomesdayDuplicator.app/Contents/MacOS"
 
-          # Replace any ffmpeg dylibs macdeployqt may have copied with our macOS 11 builds.
-          # (macdeployqt follows the binary's load commands and copies whatever it finds.)
-          for lib in libavutil.60.dylib libswresample.6.dylib; do
-            src="$HOME/ffmpeg-compat/lib/$lib"
-            [ -f "$src" ] && cp -f "$src" "$APP_FW/" 2>/dev/null || true
-            [ -f "$APP_FW/$lib" ] && \
-              install_name_tool -id "@rpath/$lib" "$APP_FW/$lib" 2>/dev/null || true
+          # Copy ALL ffmpeg shared libs from our macOS 11 build into Frameworks/,
+          # fix each lib's install name and any cross-references to other ffmpeg libs.
+          for lib_path in $HOME/ffmpeg-compat/lib/*.dylib; do
+            lib=$(basename "$lib_path")
+            cp -f "$lib_path" "$APP_FW/$lib" 2>/dev/null || true
+            install_name_tool -id "@rpath/$lib" "$APP_FW/$lib" 2>/dev/null || true
+            # Fix cross-references between ffmpeg dylibs
+            for dep in $(otool -L "$APP_FW/$lib" 2>/dev/null | grep ffmpeg-compat | awk '{print $1}'); do
+              dep_base=$(basename "$dep")
+              install_name_tool -change "$dep" "@rpath/$dep_base" "$APP_FW/$lib" 2>/dev/null || true
+            done
+            # Fix soxr dependency path
+            for dep in $(otool -L "$APP_FW/$lib" 2>/dev/null | grep soxr | awk '{print $1}'); do
+              dep_base=$(basename "$dep")
+              cp -n "$(brew --prefix soxr)/lib/$dep_base" "$APP_FW/" 2>/dev/null || true
+              install_name_tool -change "$dep" "@rpath/$dep_base" "$APP_FW/$lib" 2>/dev/null || true
+            done
           done
+          # Fix soxr's own install name if we copied it
+          for lib in "$APP_FW"/libsoxr*.dylib; do
+            [ -f "$lib" ] && install_name_tool -id "@rpath/$(basename $lib)" "$lib" 2>/dev/null || true
+          done
+
+          # Bundle the ffmpeg binary for on-the-fly FLAC capture.
+          # The app looks for it in Contents/MacOS/ (next to the main executable).
+          if [ -f "$HOME/ffmpeg-compat/bin/ffmpeg" ]; then
+            cp "$HOME/ffmpeg-compat/bin/ffmpeg" "$APP_MACOS/"
+            # Fix the ffmpeg binary's load commands to find dylibs in ../Frameworks/
+            install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_MACOS/ffmpeg" 2>/dev/null || true
+            for dep in $(otool -L "$APP_MACOS/ffmpeg" 2>/dev/null | grep ffmpeg-compat | awk '{print $1}'); do
+              dep_base=$(basename "$dep")
+              install_name_tool -change "$dep" "@rpath/$dep_base" "$APP_MACOS/ffmpeg" 2>/dev/null || true
+            done
+            for dep in $(otool -L "$APP_MACOS/ffmpeg" 2>/dev/null | grep soxr | awk '{print $1}'); do
+              dep_base=$(basename "$dep")
+              install_name_tool -change "$dep" "@rpath/$dep_base" "$APP_MACOS/ffmpeg" 2>/dev/null || true
+            done
+            strip "$APP_MACOS/ffmpeg" 2>/dev/null || true
+            echo "=== ffmpeg binary bundled ==="
+            "$APP_MACOS/ffmpeg" -version 2>&1 | head -3 || echo "WARNING: bundled ffmpeg failed to run"
+          else
+            echo "WARNING: ffmpeg binary not found at $HOME/ffmpeg-compat/bin/ffmpeg"
+          fi
+
+          # Bundle the flac binary (Homebrew's flac works fine on Big Sur for our pipeline).
+          FLAC_BIN="$(brew --prefix flac)/bin/flac"
+          if [ -f "$FLAC_BIN" ]; then
+            cp "$FLAC_BIN" "$APP_MACOS/"
+            strip "$APP_MACOS/flac" 2>/dev/null || true
+            echo "=== flac binary bundled ==="
+            "$APP_MACOS/flac" --version || echo "WARNING: bundled flac failed to run"
+          fi
 
           # Copy indirect dylib dependencies that macdeployqt fails to resolve
           # (libwebp/libsharpyuv pulled in by Qt image plugins, libbrotlicommon by freetype).
@@ -237,6 +293,9 @@ jobs:
           find DomesdayDuplicator/DomesdayDuplicator.app \
                \( -name "*.dylib" -o -name "*.so" \) \
                -exec codesign --force --sign - {} \; 2>/dev/null || true
+          # Re-sign the ffmpeg and flac binaries we added
+          codesign --force --sign - "$APP_MACOS/ffmpeg" 2>/dev/null || true
+          codesign --force --sign - "$APP_MACOS/flac"   2>/dev/null || true
           codesign --force --deep --sign - DomesdayDuplicator/DomesdayDuplicator.app 2>/dev/null || true
 
           # Build the DMG from the signed app bundle

@@ -80,6 +80,9 @@ static FILE* openPipeNoWindow(const std::wstring& cmd, HANDLE& outProcess, HANDL
 #else
 #include <sched.h>
 #include <sys/mman.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 #endif
 #include <iostream>
 #include <thread>
@@ -214,6 +217,22 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
         {
             std::string ffmpegCmd = "ffmpeg";
             std::string flacCmd   = "flac";
+#ifdef __APPLE__
+            // On macOS, look for ffmpeg/flac next to our own executable first.
+            // When running from an .app bundle they live in Contents/MacOS/ next to the main binary.
+            {
+                char execPath[4096] = {};
+                uint32_t pathSize = sizeof(execPath);
+                if (_NSGetExecutablePath(execPath, &pathSize) == 0)
+                {
+                    std::filesystem::path execDir = std::filesystem::path(execPath).parent_path();
+                    std::filesystem::path ffmpegLocal = execDir / "ffmpeg";
+                    std::filesystem::path flacLocal   = execDir / "flac";
+                    if (std::filesystem::exists(ffmpegLocal)) ffmpegCmd = ffmpegLocal.string();
+                    if (std::filesystem::exists(flacLocal))   flacCmd   = flacLocal.string();
+                }
+            }
+#endif
             // flac writes to stdout (-c), which we capture via the stdout pipe
             std::string cmd = ffmpegCmd + " -hide_banner -loglevel error -f s16le -ar 40000000 -ac 1 -i pipe:0 "
                 + "-af aresample=" + std::to_string(outputSampleRate) + ":resampler=soxr:precision=28 "

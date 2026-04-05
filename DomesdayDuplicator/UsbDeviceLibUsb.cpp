@@ -495,23 +495,16 @@ void UsbDeviceLibUsb::UsbTransferThread()
     size_t diskBufferIncrementOnCompletion = 0;
     size_t diskBufferTransferSpan = 0;
     bool useSmallUsbTransfers = GetUseSmallUsbTransfers();
-#ifdef __APPLE__
-    // On macOS (libusb/IOKit), use the same parameters as v2.3 which are proven to work:
-    // 256KB transfers, 16 simultaneous = 4MB queued. Using 2MB transfers causes IOKit
-    // issues; using 128KB × 96 simultaneous (the Linux small-transfer path) causes too
-    // much overhead. 256KB × 16 is the empirically validated sweet spot for macOS.
-    {
-        const size_t macOsTransferBlockSize = 256 * 1024;
-        const size_t macOsSimultaneousTransfers = 16;
-        size_t transferBlockSize = (macOsTransferBlockSize / connectedBulkPipeMaxPacketSizeInBytes) * connectedBulkPipeMaxPacketSizeInBytes;
-        transferSizeInBytes = transferBlockSize;
-        transfersPerDiskBuffer = std::max<size_t>(1, diskBufferSizeInBytes / transferBlockSize);
-        diskBufferTransferSpan = std::max<size_t>(1, std::min(macOsSimultaneousTransfers / transfersPerDiskBuffer, diskBufferCount - 2));
-    }
-#else
     if (!useSmallUsbTransfers)
     {
         diskBufferTransferSpan = diskBufferCount - 1;
+#ifdef __APPLE__
+        // macOS IOKit has tighter limits on outstanding bulk USB transfers than Linux usbfs.
+        // Submitting all diskBufferCount-1 simultaneous 2MB transfers (up to 254MB in flight)
+        // stalls the IOKit USB stack, causing underflows after only a few seconds.
+        // Cap to 15 concurrent transfers (~30MB queue) which matches v2.3's behaviour.
+        diskBufferTransferSpan = std::min(diskBufferTransferSpan, (size_t)15);
+#endif
         transferSizeInBytes = diskBufferSizeInBytes;
         transfersPerDiskBuffer = 1;
     }
@@ -524,7 +517,6 @@ void UsbDeviceLibUsb::UsbTransferThread()
         transferSizeInBytes = transferBlockSize;
         transfersPerDiskBuffer = (diskBufferSizeInBytes / transferBlockSize);
     }
-#endif
     simultaneousTransfers = transfersPerDiskBuffer * diskBufferTransferSpan;
     diskBufferIncrementOnCompletion = diskBufferTransferSpan;
 
