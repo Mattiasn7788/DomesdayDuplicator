@@ -94,12 +94,10 @@ jobs:
           rm -f zlib1.dll 2>/dev/null || true
 
           # Remove Qt plugins we don't use.
-          # qtuiotouchplugin (touch input) drags in Qt6Network + libcrypto + TLS DLLs.
+          # qtuiotouchplugin (touch input) drags in Qt6Network — remove the plugin dirs and Qt6Network itself.
+          # Keep the TLS/crypto DLLs (libcrypto, libgnutls, etc.) — ffmpeg needs them for network streams.
           rm -rf generic networkinformation tls 2>/dev/null || true
-          rm -f Qt6Network.dll libcrypto-3-x64.dll libssl-3-x64.dll \
-                libgnutls-30.dll libhogweed-6.dll libnettle-8.dll \
-                libp11-kit-0.dll libtasn1-6.dll libidn2-0.dll \
-                libunistring-5.dll 2>/dev/null || true
+          rm -f Qt6Network.dll libssl-3-x64.dll 2>/dev/null || true
 
           find . -maxdepth 1 -type f ! -name "*.exe" ! -name "*.dll" -delete
           find . -maxdepth 1 -type d ! -name "." ! -name "platforms" ! -name "styles" -exec rm -rf {} +
@@ -152,9 +150,17 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install dependencies
+      - name: Install Qt 6.5 LTS (macOS 11+ compatible) via aqtinstall
         run: |
-          brew install cmake qt6 libusb ffmpeg flac brotli webp
+          pip3 install aqtinstall
+          # Qt 6.5 LTS is the last series with macOS 11 (Big Sur) as minimum target.
+          # Homebrew's qt6 (6.11+) requires macOS 14, so we use aqtinstall instead.
+          aqt install-qt mac desktop 6.5.3 clang_64 --outputdir ~/Qt -m qtserialport
+          echo "QT_ROOT=$HOME/Qt/6.5.3/macos" >> $GITHUB_ENV
+
+      - name: Install other dependencies
+        run: |
+          brew install cmake libusb ffmpeg flac brotli webp
 
       - name: Build & Package
         run: |
@@ -164,17 +170,16 @@ jobs:
           export PKG_CONFIG_PATH="$(brew --prefix ffmpeg)/lib/pkgconfig:$(brew --prefix libusb)/lib/pkgconfig:$PKG_CONFIG_PATH"
 
           cmake .. -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix qt6)" \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
           make -j$(sysctl -n hw.logicalcpu)
 
           # Deploy Qt into the app bundle (no -dmg yet — we sign first).
-          # macdeployqt6 prints rpath errors for optional Qt modules (QtPdf, QtSvg,
-          # QtVirtualKeyboard) that aren't installed — these are harmless, so use || true.
-          $(brew --prefix qt6)/bin/macdeployqt6 DomesdayDuplicator/DomesdayDuplicator.app || true
+          # macdeployqt may print rpath errors for optional Qt modules — harmless, use || true.
+          $QT_ROOT/bin/macdeployqt DomesdayDuplicator/DomesdayDuplicator.app || true
 
-          # Copy indirect dylib dependencies that macdeployqt6 fails to resolve
+          # Copy indirect dylib dependencies that macdeployqt fails to resolve
           # (libwebp/libsharpyuv pulled in by Qt image plugins, libbrotlicommon by freetype).
           APP_FW="DomesdayDuplicator/DomesdayDuplicator.app/Contents/Frameworks"
           for lib in \
@@ -189,7 +194,7 @@ jobs:
               install_name_tool -id "@rpath/$lib" "$APP_FW/$lib" 2>/dev/null || true
           done
 
-          # macdeployqt6 may leave some bundled dylibs without a valid signature.
+          # macdeployqt may leave some bundled dylibs without a valid signature.
           # Force ad-hoc re-sign of every library and then the whole app bundle.
           find DomesdayDuplicator/DomesdayDuplicator.app \
                \( -name "*.dylib" -o -name "*.so" \) \
