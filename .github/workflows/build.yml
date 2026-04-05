@@ -143,8 +143,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-macos:
-    runs-on: macos-latest  # ARM (Apple Silicon M1/M2/M3/M4)
-    if: false  # Disabled — re-enable when an Apple Silicon Mac is available for testing
+    runs-on: macos-15-intel  # Intel x86_64 Mac
     permissions:
       contents: write
 
