@@ -196,7 +196,7 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
 
         // flac writes to stdout (-c), which we capture via the stdout pipe
         std::string cmd = ffmpegCmd + " -hide_banner -loglevel error -f s16le -ar 40000000 -ac 1 -i pipe:0 "
-            + "-af aresample=" + std::to_string(outputSampleRate) + ":resampler=swr "
+            + "-af aresample=" + std::to_string(outputSampleRate) + ":resampler=soxr:precision=28 "
             + "-sample_fmt u8 -f u8 - | "
             + flacCmd + " -" + std::to_string(level) + " --bps=8 --sign=unsigned --channels=1 --endian=little "
             + "--sample-rate=" + std::to_string(flacSampleRate) + " "
