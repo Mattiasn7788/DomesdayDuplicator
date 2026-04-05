@@ -146,6 +146,9 @@ jobs:
         run: |
           mkdir -p build && cd build
 
+          # Tell pkg-config where Homebrew's ffmpeg libraries are
+          export PKG_CONFIG_PATH="$(brew --prefix ffmpeg)/lib/pkgconfig:$(brew --prefix libusb)/lib/pkgconfig:$PKG_CONFIG_PATH"
+
           cmake .. -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$(brew --prefix qt6)"
 
