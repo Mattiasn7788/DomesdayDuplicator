@@ -221,15 +221,26 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
         // Start a background thread that reads flac's stdout and writes to the output file,
         // so GetFileSizeWrittenInBytes() returns the actual compressed FLAC bytes in real time.
         flacReaderThread = std::thread([this]() {
-            const DWORD bufSize = 65536;
-            std::vector<char> buf(bufSize);
-            DWORD bytesRead;
-            while (ReadFile(flacReadPipeHandle, buf.data(), bufSize, &bytesRead, NULL) && bytesRead > 0)
+            try
             {
-                captureOutputFile.write(buf.data(), static_cast<std::streamsize>(bytesRead));
-                transferFileSizeWrittenInBytes += bytesRead;
+                const DWORD bufSize = 65536;
+                std::vector<char> buf(bufSize);
+                DWORD bytesRead;
+                while (ReadFile(flacReadPipeHandle, buf.data(), bufSize, &bytesRead, NULL) && bytesRead > 0)
+                {
+                    captureOutputFile.write(buf.data(), static_cast<std::streamsize>(bytesRead));
+                    transferFileSizeWrittenInBytes += bytesRead;
+                }
+                captureOutputFile.flush();
             }
-            captureOutputFile.flush();
+            catch (const std::exception& e)
+            {
+                Log().Error("flacReaderThread: Unhandled exception: {0}", e.what());
+            }
+            catch (...)
+            {
+                Log().Error("flacReaderThread: Unknown unhandled exception");
+            }
         });
 #endif
     }
@@ -408,6 +419,8 @@ void UsbDeviceBase::StopCapture()
 //----------------------------------------------------------------------------------------------------------------------
 void UsbDeviceBase::CaptureThread()
 {
+  try
+  {
     // Determine how large our conversion buffers need to be based on the disk buffer size and the capture format
     size_t requiredConversionBufferSize = 0;
     switch (captureFormat)
@@ -625,6 +638,21 @@ void UsbDeviceBase::CaptureThread()
     // Flag that this thread is no longer running
     captureThreadRunning.clear();
     captureThreadRunning.notify_all();
+  }
+  catch (const std::exception& e)
+  {
+      Log().Error("CaptureThread(): Unhandled exception: {0}", e.what());
+      SetUsbTransferFinished(TransferResult::ProgramError);
+      captureThreadRunning.clear();
+      captureThreadRunning.notify_all();
+  }
+  catch (...)
+  {
+      Log().Error("CaptureThread(): Unknown unhandled exception");
+      SetUsbTransferFinished(TransferResult::ProgramError);
+      captureThreadRunning.clear();
+      captureThreadRunning.notify_all();
+  }
 }
 
 //----------------------------------------------------------------------------------------------------------------------
