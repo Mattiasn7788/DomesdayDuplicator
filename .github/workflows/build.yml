@@ -101,6 +101,8 @@ jobs:
 
           echo "=== VERIFY FFMPEG RUNS ==="
           ./ffmpeg.exe -version || echo "WARNING: ffmpeg.exe failed to run - check DLLs!"
+          echo "=== VERIFY FLAC RUNS ==="
+          ./flac.exe --version || echo "WARNING: flac.exe failed to run - check DLLs!"
 
           echo "=== FINAL CONTENTS ==="
           ls -la

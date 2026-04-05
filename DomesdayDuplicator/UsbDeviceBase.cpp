@@ -1,4 +1,5 @@
 #include "UsbDeviceBase.h"
+#include <csignal>
 #ifdef _WIN32
 #include <memoryapi.h>
 #include <io.h>
@@ -211,6 +212,10 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
             captureResult = TransferResult::FileCreationError;
             return false;
         }
+
+        // MinGW-w64 CRT simulates SIGPIPE on Windows: a broken pipe from fwrite() would
+        // raise SIGPIPE and kill the process. Ignore it so fwrite() returns an error instead.
+        std::signal(SIGPIPE, SIG_IGN);
 
 #ifdef _WIN32
         // Start a background thread that reads flac's stdout and writes to the output file,
