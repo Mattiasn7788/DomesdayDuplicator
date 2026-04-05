@@ -36,6 +36,11 @@ target_compile_options(DomesdayDuplicator PRIVATE
     $<$<AND:$<CONFIG:Release>,$<CXX_COMPILER_ID:GNU>>:-O3 -funroll-loops>
 )
 
+# Suppress deprecation warnings from the third-party qcustomplot.cpp on all platforms
+set_source_files_properties(qcustomplot.cpp PROPERTIES
+    COMPILE_OPTIONS "-Wno-deprecated-declarations"
+)
+
 target_link_libraries(DomesdayDuplicator PRIVATE
     Qt::Core
     Qt::Gui
