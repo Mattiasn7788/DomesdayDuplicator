@@ -131,7 +131,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-13  # Intel x86_64 — last Intel runner; supports Big Sur (11.0)+
     permissions:
       contents: write
 
@@ -152,7 +152,8 @@ jobs:
           export PKG_CONFIG_PATH="$(brew --prefix ffmpeg)/lib/pkgconfig:$(brew --prefix libusb)/lib/pkgconfig:$PKG_CONFIG_PATH"
 
           cmake .. -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix qt6)"
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt6)" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
           make -j$(sysctl -n hw.logicalcpu)
 
@@ -174,10 +175,10 @@ jobs:
           echo "=== FINAL CONTENTS ==="
           ls -lh ../DomesdayDuplicator_macOS.dmg
 
-      - name: Upload artifact (macOS)
+      - name: Upload artifact (macOS Intel)
         uses: actions/upload-artifact@v4
         with:
-          name: DomesdayDuplicator-macOS
+          name: DomesdayDuplicator-macOS-Intel
           path: DomesdayDuplicator_macOS.dmg
           retention-days: 30
 
