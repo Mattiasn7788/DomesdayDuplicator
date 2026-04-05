@@ -160,7 +160,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          brew install cmake libusb flac brotli webp soxr
+          brew install cmake libusb flac brotli webp libsoxr
           # Note: ffmpeg is NOT installed from Homebrew — Homebrew's ffmpeg targets macOS 14.
           # We build it from source with deployment target 11.0 below.
 
@@ -195,8 +195,8 @@ jobs:
             --disable-muxers   --enable-muxer=pcm_u8 \
             --disable-filters  --enable-filter=aresample \
             --enable-libsoxr \
-            --extra-cflags="-mmacosx-version-min=11.0 -I$(brew --prefix soxr)/include" \
-            --extra-ldflags="-mmacosx-version-min=11.0 -L$(brew --prefix soxr)/lib" \
+            --extra-cflags="-mmacosx-version-min=11.0 -I$(brew --prefix libsoxr)/include" \
+            --extra-ldflags="-mmacosx-version-min=11.0 -L$(brew --prefix libsoxr)/lib" \
             --disable-x86asm
           make -j$(sysctl -n hw.logicalcpu)
           make install
@@ -235,7 +235,7 @@ jobs:
             # Fix soxr dependency path
             for dep in $(otool -L "$APP_FW/$lib" 2>/dev/null | grep soxr | awk '{print $1}'); do
               dep_base=$(basename "$dep")
-              cp -n "$(brew --prefix soxr)/lib/$dep_base" "$APP_FW/" 2>/dev/null || true
+              cp -n "$(brew --prefix libsoxr)/lib/$dep_base" "$APP_FW/" 2>/dev/null || true
               install_name_tool -change "$dep" "@rpath/$dep_base" "$APP_FW/$lib" 2>/dev/null || true
             done
           done
