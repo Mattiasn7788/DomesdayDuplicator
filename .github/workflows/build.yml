@@ -104,8 +104,12 @@ jobs:
           echo "=== VERIFY FLAC RUNS ==="
           ./flac.exe --version || echo "WARNING: flac.exe failed to run - check DLLs!"
 
+          # Strip debug symbols from all DLLs and EXEs to reduce package size.
+          # --strip-unneeded removes debug/symbol tables while keeping exports intact.
+          strip --strip-unneeded *.exe *.dll platforms/*.dll styles/*.dll 2>/dev/null || true
+
           echo "=== FINAL CONTENTS ==="
-          ls -la
+          du -sh . && ls -lh *.exe *.dll 2>/dev/null | sort -k5 -rh | head -20
 
           # Create zip one level up (avoids $GITHUB_WORKSPACE path issues in MSYS2)
           zip -9 -r "../DomesdayDuplicator_Flac+DownSampling.zip" ./*
