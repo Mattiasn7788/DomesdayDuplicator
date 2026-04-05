@@ -905,6 +905,7 @@ void UsbDeviceBase::ProcessingThread()
             // Write the converted data to the pipe or output file
             if (captureFormat == CaptureFormat::Signed16BitFlacOnTheFly)
             {
+#ifdef _WIN32
                 // Write raw s16le data to the ffmpeg+flac pipe using WriteFile directly.
                 // Avoids fwrite/MinGW CRT which can call abort() on a broken pipe.
                 if (flacStdinWriteHandle == INVALID_HANDLE_VALUE)
@@ -924,6 +925,16 @@ void UsbDeviceBase::ProcessingThread()
                     processingFailure = true;
                     continue;
                 }
+#else
+                size_t written = fwrite(currentConversionBuffer.data(), 1, currentConversionBuffer.size(), flacPipeHandle);
+                if (written != currentConversionBuffer.size())
+                {
+                    Log().Error("ProcessingThread(): Failed to write to FLAC pipe");
+                    SetProcessingFinished(TransferResult::FileWriteError);
+                    processingFailure = true;
+                    continue;
+                }
+#endif
                 bufferEntry.isDiskBufferFull.clear();
                 bufferEntry.isDiskBufferFull.notify_all();
                 ++transferBufferWrittenCount;
