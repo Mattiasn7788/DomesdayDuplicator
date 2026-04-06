@@ -172,8 +172,12 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
     if (format == CaptureFormat::Signed16BitFlacOnTheFly)
     {
         // Open an on-the-fly pipe: ffmpeg (s16le 40MSPS) → resample → u8 → flac → our stdout reader → file
-        int outputSampleRate = flacOutputSampleRateInHz / 1000;
-        int flacSampleRate   = flacOutputSampleRateInHz / 1000;
+        // flacOutputSampleRateInHz is the real target rate in Hz (e.g. 20,000,000).
+        // ffmpeg's aresample filter needs the actual Hz value.
+        // The FLAC header stores the rate in the ld-decode/vhs-decode kHz convention
+        // (e.g. 20000 meaning 20 MHz), so we divide by 1000 only for the flac argument.
+        int ffmpegResampleRate = flacOutputSampleRateInHz;
+        int flacSampleRate     = flacOutputSampleRateInHz / 1000;
         int level = (flacCompressionLevel >= 0 && flacCompressionLevel <= 8) ? flacCompressionLevel : 8;
 
         // Look for ffmpeg/flac next to our own exe first, then fall back to PATH.
@@ -205,7 +209,7 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
 
             // flac writes to stdout (-c), which we capture via the stdout pipe
             std::wstring cmd = ffmpegCmdW + L" -hide_banner -loglevel error -f s16le -ar 40000000 -ac 1 -i pipe:0 "
-                + L"-af aresample=" + std::to_wstring(outputSampleRate) + L":resampler=soxr:precision=28 "
+                + L"-af aresample=" + std::to_wstring(ffmpegResampleRate) + L":resampler=soxr:precision=28 "
                 + L"-sample_fmt u8 -f u8 - | "
                 + flacCmdW + L" -" + std::to_wstring(level) + L" --bps=8 --sign=unsigned --channels=1 --endian=little "
                 + L"--sample-rate=" + std::to_wstring(flacSampleRate) + L" "
@@ -253,7 +257,7 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
             // On macOS use the built-in SWR resampler to avoid a libsoxr dylib loading
             // issue when ffmpeg is launched as a child process from the app bundle.
             std::string cmd = ffmpegCmd + " -hide_banner -loglevel error -f s16le -ar 40000000 -ac 1 -i pipe:0 "
-                + "-af aresample=" + std::to_string(outputSampleRate) + " "
+                + "-af aresample=" + std::to_string(ffmpegResampleRate) + " "
                 + "-sample_fmt u8 -f u8 - "
                 + "2>/tmp/ddd_ffmpeg_err.log | "
                 + flacCmd + " -" + std::to_string(level) + " --bps=8 --sign=unsigned --channels=1 --endian=little "

@@ -47,6 +47,8 @@
 #include <memory>
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__APPLE__) || defined(__linux__)
+#include <sys/types.h>
 #endif
 
 namespace Ui {
@@ -159,6 +161,9 @@ private:
     PROCESS_INFORMATION sdrProcessInfo = {};
     bool sdrRunning = false;
     HANDLE sdrJobHandle = nullptr;
+#elif defined(__APPLE__) || defined(__linux__)
+    pid_t fmediaPid = -1;
+    bool fmediaRunning = false;
 #endif
 
     bool isPlayerConnected = false;

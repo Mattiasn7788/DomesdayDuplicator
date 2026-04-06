@@ -42,6 +42,11 @@
 // build it from source and run an unsupported config.
 #include <format>
 #endif
+#if defined(__APPLE__) || defined(__linux__)
+#include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
+#endif
 #include "json/json.hpp"
 #include <QApplication>
 #include <QPalette>
@@ -1557,9 +1562,57 @@ void MainWindow::StopSdrCapture()
     qDebug() << "MainWindow::StopSdrCapture(): GNURadio stopped";
 }
 
-#else
-void MainWindow::StartAudioCapture(const std::filesystem::path&) {}
-void MainWindow::StopAudioCapture() {}
+#elif defined(__APPLE__) || defined(__linux__)
+void MainWindow::StartAudioCapture(const std::filesystem::path& rfFilePath)
+{
+    std::filesystem::path audioFilePath = rfFilePath.parent_path() / (rfFilePath.stem().string() + "_audio.flac");
+
+    QString configuredPath = configuration->getFmediaPath().trimmed();
+    std::string fmediaExe = configuredPath.isEmpty() ? "fmedia" : configuredPath.toStdString();
+
+    int deviceIndex = configuration->getAudioCaptureDeviceIndex();
+    std::string outArg = "--out=" + audioFilePath.string();
+    std::string devArg = "--dev-capture=" + std::to_string(deviceIndex);
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child: exec fmedia; never returns on success
+        execlp(fmediaExe.c_str(), fmediaExe.c_str(),
+               "--record", outArg.c_str(), devArg.c_str(), nullptr);
+        _exit(1);
+    } else if (pid > 0) {
+        fmediaPid = pid;
+        fmediaRunning = true;
+        qDebug() << "MainWindow::StartAudioCapture(): Started fmedia, pid=" << pid
+                 << "out=" << QString::fromStdString(audioFilePath.string());
+    } else {
+        fmediaRunning = false;
+        qDebug() << "MainWindow::StartAudioCapture(): fork() failed";
+    }
+}
+
+void MainWindow::StopAudioCapture()
+{
+    if (!fmediaRunning || fmediaPid <= 0) return;
+
+    // SIGTERM lets fmedia flush and close the FLAC file cleanly
+    kill(fmediaPid, SIGTERM);
+
+    // Wait up to 5 seconds for a clean exit
+    for (int i = 0; i < 50; i++) {
+        int status;
+        if (waitpid(fmediaPid, &status, WNOHANG) == fmediaPid) break;
+        usleep(100000); // 100 ms
+    }
+    // Force-kill if still alive
+    kill(fmediaPid, SIGKILL);
+    waitpid(fmediaPid, nullptr, WNOHANG);
+
+    fmediaPid = -1;
+    fmediaRunning = false;
+    qDebug() << "MainWindow::StopAudioCapture(): fmedia stopped";
+}
+
 void MainWindow::StartSdrCapture(const std::filesystem::path&) {}
 void MainWindow::StopSdrCapture() {}
 #endif

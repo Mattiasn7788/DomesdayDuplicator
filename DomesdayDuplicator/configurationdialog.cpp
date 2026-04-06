@@ -127,7 +127,7 @@ void ConfigurationDialog::buildAudioTab()
 
     // fmedia path row
     QHBoxLayout* pathRow = new QHBoxLayout();
-    pathRow->addWidget(new QLabel(tr("fmedia.exe path:"), audioPage));
+    pathRow->addWidget(new QLabel(tr("fmedia path:"), audioPage));
     fmediaPathLineEdit = new QLineEdit(audioPage);
     fmediaPathLineEdit->setPlaceholderText(tr("Leave blank to auto-detect"));
     pathRow->addWidget(fmediaPathLineEdit);
@@ -156,8 +156,15 @@ void ConfigurationDialog::buildAudioTab()
 
     // Connect buttons
     connect(fmediaPathBrowseBtn, &QPushButton::clicked, this, [this]() {
-        QString path = QFileDialog::getOpenFileName(this, tr("Select fmedia.exe"),
-            fmediaPathLineEdit->text(), tr("Executable (*.exe);;All files (*)"));
+#ifdef _WIN32
+        QString filter = tr("Executable (*.exe);;All files (*)");
+        QString title  = tr("Select fmedia.exe");
+#else
+        QString filter = tr("All files (*)");
+        QString title  = tr("Select fmedia");
+#endif
+        QString path = QFileDialog::getOpenFileName(this, title,
+            fmediaPathLineEdit->text(), filter);
         if (!path.isEmpty()) fmediaPathLineEdit->setText(path);
     });
     connect(audioDeviceRefreshBtn, &QPushButton::clicked, this, [this]() {
@@ -169,9 +176,11 @@ void ConfigurationDialog::refreshAudioDevices()
 {
     QString fmediaExe = fmediaPathLineEdit->text().trimmed();
     if (fmediaExe.isEmpty()) {
+#ifdef _WIN32
         if (QFileInfo::exists("C:/Program Files/fmedia/fmedia.exe"))
             fmediaExe = "C:/Program Files/fmedia/fmedia.exe";
         else
+#endif
             fmediaExe = "fmedia";
     }
 
