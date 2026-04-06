@@ -3,6 +3,8 @@
 #include "AudioResampler.h"
 #include <cstdint>
 #include <cstdio>
+#include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -214,6 +216,21 @@ private:
     std::ofstream captureOutputFile;
 #ifdef _WIN32
     HANDLE windowsCaptureOutputFileHandle;
+#endif
+
+#ifdef __APPLE__
+    // Write thread for macOS: accumulates converted data into 64MB chunks and writes them
+    // asynchronously, so the processing thread never blocks on I/O and USB buffers drain freely.
+    static constexpr size_t macosWriteChunkBytes = 64u * 1024u * 1024u;
+    static constexpr size_t macosWriteQueueMaxChunks = 2;
+    std::vector<uint8_t> macosWriteFillBuffer;
+    std::deque<std::vector<uint8_t>> macosWriteQueue;
+    std::mutex macosWriteMutex;
+    std::condition_variable macosWriteCv;
+    bool macosWriteThreadExit = false;
+    std::atomic<bool> macosWriteError{false};
+    std::thread macosWriteThread;
+    void MacosWriteThread();
 #endif
 
     // On-the-fly FLAC pipe state

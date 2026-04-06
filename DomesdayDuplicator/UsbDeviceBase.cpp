@@ -323,6 +323,15 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
 #ifdef _WIN32
         }
 #endif
+#ifdef __APPLE__
+        // Launch the off-thread writer so the processing thread never blocks on disk I/O
+        macosWriteFillBuffer.clear();
+        macosWriteFillBuffer.reserve(macosWriteChunkBytes);
+        macosWriteQueue.clear();
+        macosWriteThreadExit = false;
+        macosWriteError.store(false);
+        macosWriteThread = std::thread(std::bind(std::mem_fn(&UsbDeviceBase::MacosWriteThread), this));
+#endif
     }
 
     // Calculate the optimal read buffer size and number of disk buffers, and initialize the structures. We use an
@@ -451,6 +460,24 @@ void UsbDeviceBase::StopCapture()
         }
         else
         {
+#endif
+#ifdef __APPLE__
+            // Flush any remaining data in the fill buffer and stop the write thread before
+            // closing the file, so all data is written and fsynced in order.
+            if (macosWriteThread.joinable())
+            {
+                {
+                    std::unique_lock<std::mutex> lock(macosWriteMutex);
+                    if (!macosWriteFillBuffer.empty())
+                    {
+                        macosWriteQueue.push_back(std::move(macosWriteFillBuffer));
+                        macosWriteFillBuffer.clear();
+                    }
+                    macosWriteThreadExit = true;
+                }
+                macosWriteCv.notify_all();
+                macosWriteThread.join();
+            }
 #endif
             captureOutputFile.close();
 #ifdef _WIN32
@@ -996,6 +1023,42 @@ void UsbDeviceBase::ProcessingThread()
             else
             {
 #endif
+#ifdef __APPLE__
+                // Check whether the write thread has hit an error
+                if (macosWriteError.load())
+                {
+                    SetProcessingFinished(TransferResult::FileWriteError);
+                    processingFailure = true;
+                    continue;
+                }
+
+                // Append the converted data to the fill buffer and release the disk buffer immediately
+                // so USB transfers can continue while the write thread drains the queue.
+                size_t appendSize = currentConversionBuffer.size();
+                macosWriteFillBuffer.insert(macosWriteFillBuffer.end(),
+                    currentConversionBuffer.begin(), currentConversionBuffer.end());
+                bufferEntry.isDiskBufferFull.clear();
+                bufferEntry.isDiskBufferFull.notify_all();
+                ++transferBufferWrittenCount;
+                transferFileSizeWrittenInBytes += appendSize;
+
+                // When we've accumulated a full chunk, hand it off to the write thread
+                if (macosWriteFillBuffer.size() >= macosWriteChunkBytes)
+                {
+                    std::unique_lock<std::mutex> lock(macosWriteMutex);
+                    macosWriteCv.wait(lock, [this]{
+                        return macosWriteQueue.size() < macosWriteQueueMaxChunks || macosWriteError.load();
+                    });
+                    if (!macosWriteError.load())
+                    {
+                        macosWriteQueue.push_back(std::move(macosWriteFillBuffer));
+                        macosWriteFillBuffer.clear();
+                        macosWriteFillBuffer.reserve(macosWriteChunkBytes);
+                    }
+                    lock.unlock();
+                    macosWriteCv.notify_all();
+                }
+#else
                 // Perform the file write in a blocking operation
                 captureOutputFile.write((const char*)currentConversionBuffer.data(), currentConversionBuffer.size());
                 if (!captureOutputFile.good())
@@ -1014,6 +1077,7 @@ void UsbDeviceBase::ProcessingThread()
                 // Add the totals from this buffer to the transfer statistics
                 ++transferBufferWrittenCount;
                 transferFileSizeWrittenInBytes += currentConversionBuffer.size();
+#endif
 #ifdef _WIN32
             }
 #endif
@@ -1111,6 +1175,37 @@ void UsbDeviceBase::ProcessingThread()
       SetProcessingFinished(TransferResult::ProgramError);
   }
 }
+
+//----------------------------------------------------------------------------------------------------------------------
+// macOS write thread
+//----------------------------------------------------------------------------------------------------------------------
+#ifdef __APPLE__
+void UsbDeviceBase::MacosWriteThread()
+{
+    while (true)
+    {
+        std::vector<uint8_t> chunk;
+        {
+            std::unique_lock<std::mutex> lock(macosWriteMutex);
+            macosWriteCv.wait(lock, [this]{ return !macosWriteQueue.empty() || macosWriteThreadExit; });
+            if (macosWriteQueue.empty())
+                break; // exit requested and no more data
+            chunk = std::move(macosWriteQueue.front());
+            macosWriteQueue.pop_front();
+        }
+        // Notify the processing thread that a slot in the queue is free
+        macosWriteCv.notify_all();
+
+        captureOutputFile.write(reinterpret_cast<const char*>(chunk.data()), static_cast<std::streamsize>(chunk.size()));
+        if (!captureOutputFile.good())
+        {
+            Log().Error("MacosWriteThread(): An error occurred when writing to the output file");
+            macosWriteError.store(true);
+            break;
+        }
+    }
+}
+#endif
 
 //----------------------------------------------------------------------------------------------------------------------
 bool UsbDeviceBase::ProcessSequenceMarkersAndUpdateSampleMetrics(size_t diskBufferIndex, uint16_t& minValue, uint16_t& maxValue, size_t& minClippedCount, size_t& maxClippedCount)
