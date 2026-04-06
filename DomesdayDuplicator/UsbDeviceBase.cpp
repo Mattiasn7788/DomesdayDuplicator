@@ -250,12 +250,16 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
             }
             quotedOutputPath += "'";
 
+            // On macOS use the built-in SWR resampler to avoid a libsoxr dylib loading
+            // issue when ffmpeg is launched as a child process from the app bundle.
             std::string cmd = ffmpegCmd + " -hide_banner -loglevel error -f s16le -ar 40000000 -ac 1 -i pipe:0 "
-                + "-af aresample=" + std::to_string(outputSampleRate) + ":resampler=soxr:precision=28 "
-                + "-sample_fmt u8 -f u8 - | "
+                + "-af aresample=" + std::to_string(outputSampleRate) + " "
+                + "-sample_fmt u8 -f u8 - "
+                + "2>/tmp/ddd_ffmpeg_err.log | "
                 + flacCmd + " -" + std::to_string(level) + " --bps=8 --sign=unsigned --channels=1 --endian=little "
                 + "--sample-rate=" + std::to_string(flacSampleRate) + " "
-                + "--no-seektable --force-raw-format -f - -o " + quotedOutputPath;
+                + "--no-seektable --force-raw-format -f - -o " + quotedOutputPath
+                + " 2>/tmp/ddd_flac_err.log";
             Log().Info(std::string("StartCapture(): FLAC pipe command: ") + cmd);
             flacPipeHandle = popen(cmd.c_str(), "w");
         }
