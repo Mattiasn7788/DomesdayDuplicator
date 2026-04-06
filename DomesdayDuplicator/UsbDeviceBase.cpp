@@ -186,7 +186,6 @@ bool UsbDeviceBase::StartCapture(const std::filesystem::path& filePath, CaptureF
             captureResult = TransferResult::FileCreationError;
             return false;
         }
-#endif // _WIN32
         {
             std::wstring ffmpegCmdW = L"ffmpeg";
             std::wstring flacCmdW   = L"flac";
