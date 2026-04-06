@@ -222,7 +222,7 @@ private:
     // Write thread for macOS: accumulates converted data into 64MB chunks and writes them
     // asynchronously, so the processing thread never blocks on I/O and USB buffers drain freely.
     static constexpr size_t macosWriteChunkBytes = 64u * 1024u * 1024u;
-    static constexpr size_t macosWriteQueueMaxChunks = 2;
+    static constexpr size_t macosWriteQueueMaxChunks = 8;
     std::vector<uint8_t> macosWriteFillBuffer;
     std::deque<std::vector<uint8_t>> macosWriteQueue;
     std::mutex macosWriteMutex;

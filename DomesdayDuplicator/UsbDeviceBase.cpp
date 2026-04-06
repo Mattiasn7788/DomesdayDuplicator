@@ -644,6 +644,9 @@ void UsbDeviceBase::CaptureThread()
         {
             processingStopRequested.test_and_set();
             processingStopRequested.notify_all();
+#ifdef __APPLE__
+            macosWriteCv.notify_all(); // wake processing thread if blocked waiting for write queue space
+#endif
             for (size_t i = 0; i < totalDiskBufferEntryCount; ++i)
             {
                 DiskBufferEntry& entry = diskBufferEntries[i];
@@ -1047,9 +1050,11 @@ void UsbDeviceBase::ProcessingThread()
                 {
                     std::unique_lock<std::mutex> lock(macosWriteMutex);
                     macosWriteCv.wait(lock, [this]{
-                        return macosWriteQueue.size() < macosWriteQueueMaxChunks || macosWriteError.load();
+                        return macosWriteQueue.size() < macosWriteQueueMaxChunks ||
+                               macosWriteError.load() ||
+                               processingStopRequested.test();
                     });
-                    if (!macosWriteError.load())
+                    if (!macosWriteError.load() && !processingStopRequested.test())
                     {
                         macosWriteQueue.push_back(std::move(macosWriteFillBuffer));
                         macosWriteFillBuffer.clear();
